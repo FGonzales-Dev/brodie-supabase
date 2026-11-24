@@ -3,13 +3,14 @@
 // per-user and global daily limits in the api_quotas table before it reaches
 // Mapbox, so usage (and the Mapbox bill) can't run past them.
 //
-// Request:  POST { "coordinates": [[lng, lat], [lng, lat], ...] }   (2–25 points)
+// Request:  POST { "coordinates": [[lng, lat], [lng, lat], ...],   (2–25 points)
+//                  "purpose"?: "ride_preview" | "reroute" | "group_plan" }
 // Response: 200 { "polyline6": string, "distance_m": number, "duration_s": number,
 //                 "maneuvers": [{ "instruction": string, "type": string, "modifier": string | null,
 //                                 "lng": number, "lat": number }] }
 //           400 invalid input · 401 not signed in · 404 no route
 //           429 daily limit reached · 502 Mapbox error
-import { adminClient, getCaller, isLngLat, json, mapboxToken, readJsonObject } from "../_shared/proxy.ts";
+import { adminClient, getCaller, isLngLat, json, mapboxToken, readJsonObject, recordPurpose } from "../_shared/proxy.ts";
 
 const MAX_POINTS = 25; // Mapbox driving-profile limit
 
@@ -19,7 +20,8 @@ Deno.serve(async (req) => {
   const user = await getCaller(req);
   if (!user) return json(401, { error: "unauthorized" });
 
-  const coordinates = (await readJsonObject(req))?.coordinates;
+  const body = await readJsonObject(req);
+  const coordinates = body?.coordinates;
   if (!isValidCoordinates(coordinates)) return json(400, { error: "invalid_coordinates" });
 
   const { data: allowed, error: quotaError } = await adminClient().rpc("consume_api_quota", {
@@ -28,6 +30,7 @@ Deno.serve(async (req) => {
   });
   if (quotaError) return json(500, { error: "quota_check_failed" });
   if (!allowed) return json(429, { error: "rate_limited" });
+  await recordPurpose(user.id, "mapbox_directions", body?.purpose);
 
   const token = mapboxToken();
   if (!token) return json(500, { error: "not_configured" });

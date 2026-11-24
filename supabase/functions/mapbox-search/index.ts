@@ -5,11 +5,12 @@
 //
 // Request:  POST { "action": "suggest", "q": string, "session_token": string, "proximity"?: [lng, lat] }
 //           POST { "action": "retrieve", "id": string, "session_token": string }
+//           Either may add "purpose": "ride_destination" | "group_destination".
 // Response: suggest  200 { "suggestions": [{ "id": string, "name": string, "address": string | null }] }
 //           retrieve 200 { "name": string, "address": string | null, "lng": number, "lat": number }
 //           400 invalid input · 401 not signed in · 404 place not found
 //           429 daily limit reached · 502 Mapbox error
-import { adminClient, getCaller, isLngLat, json, mapboxToken, readJsonObject } from "../_shared/proxy.ts";
+import { adminClient, getCaller, isLngLat, json, mapboxToken, readJsonObject, recordPurpose } from "../_shared/proxy.ts";
 
 const MAX_REQUESTS_PER_SESSION = 50; // Mapbox's own per-session suggest limit
 const SEARCH_URL = "https://api.mapbox.com/search/searchbox/v1";
@@ -41,6 +42,7 @@ Deno.serve(async (req) => {
   });
   if (quotaError) return json(500, { error: "quota_check_failed" });
   if (!allowed) return json(429, { error: "rate_limited" });
+  await recordPurpose(user.id, "mapbox_search", body!.purpose, sessionToken);
 
   const token = mapboxToken();
   if (!token) return json(500, { error: "not_configured" });

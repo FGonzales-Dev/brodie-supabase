@@ -37,3 +37,23 @@ export const isLngLat = (value: unknown): value is [number, number] =>
   value.every((n) => typeof n === "number" && Number.isFinite(n)) &&
   Math.abs(value[0]) <= 180 &&
   Math.abs(value[1]) <= 90;
+
+/**
+ * Counts a billed call under what the rider was doing (see the
+ * api_usage_by_purpose migration). For search, pass the session token: only
+ * a session's first request counts. Never fails the request it describes.
+ */
+export async function recordPurpose(
+  userId: string,
+  apiName: string,
+  purpose: unknown,
+  sessionToken?: string,
+): Promise<void> {
+  const { error } = await adminClient().rpc("record_api_purpose", {
+    p_user_id: userId,
+    p_api_name: apiName,
+    p_purpose: typeof purpose === "string" ? purpose.slice(0, 40) : null,
+    p_session_token: sessionToken ?? null,
+  });
+  if (error) console.error("record_api_purpose failed", error.message);
+}
